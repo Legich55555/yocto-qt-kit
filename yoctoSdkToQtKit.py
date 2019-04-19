@@ -31,46 +31,49 @@ class CMakeToolSettings:
     
     def getId(self):
         return self.__id
-        
+
 class ToolchainSettings:
-    def __init__(self, params):
+    def __init__(self, name, qtLangId, qtLangName, params, toolId):
         self.__inputParams = params
-        self.__gccId = "{" + str(uuid.uuid4()) + "}" 
-        self.__gppId = "{" + str(uuid.uuid4()) + "}" 
+        self.__name = name
+        self.__qtLangId = qtLangId
+        self.__qtLangName = qtLangName
+        self.__targetTriplet = params.getTargetTriple()
         
-    def getGccName(self):
-        return self.__inputParams.name + " gcc compiler"
-
-    def getGccPath(self):
-        path = self.getTool("gcc")
-        return path
-
-    def getGccId(self):
-        return self.__gccId
-
-    def getGppName(self):
-        return self.__inputParams.name + " g++ compiler"
+        if (toolId == None):
+            self.__toolId = "{" + str(uuid.uuid4()) + "}" 
+        else:
+            self.__toolId = toolId
         
-    def getGppPath(self):
-        path = self.getTool("g++")
-        return path
-    
-    def getGppId(self):
-        return self.__gppId
-    
-    def getTargetTriple(self):
-        return self.__inputParams.getTargetTriple()
+    def getId(self):
+        return self.__toolId
 
-    def getTool(self, tool):
-        targetSpec = self.__inputParams.getTargetTriple()
-        nativeSysroot = self.__inputParams.getNativeSysroot()
-        
-        path = os.path.join(nativeSysroot, "usr", "bin", targetSpec, targetSpec + "-" + tool)
-        
+    def getName(self):
+        return self.__name
+
+    def getUserFriendlyName(self):
+        return self.__inputParams.name + ' ' + self.__name + ' toolchain'
+
+    def getPath(self):
+        path = os.path.join(self.__inputParams.getNativeSysroot(), "usr", "bin",
+                            self.__inputParams.getTargetTriple(),
+                            self.__inputParams.getTargetTriple() + "-" + self.__name)
         if (not os.path.isfile(path)):
             raise Exception('Failed to find a compiler: ' + path)
         
         return path
+
+    def getQtLangId(self):
+        return self.__qtLangId
+
+    def getQtLangName(self):
+        return self.__qtLangName
+
+    def getTargetTriple(self):
+        return self.__targetTriplet
+    
+    def getInputParams(self):
+        return self.__inputParams
 
 class Params:
     def __init__(self):
@@ -85,13 +88,17 @@ class Params:
         self.qtCreatorConfigDir = None
         self.__profileId = "{" + str(uuid.uuid4()) + "}"
         self.__cmakeSettings = CMakeToolSettings(self)
-        self.__toolchainSettings = ToolchainSettings(self)
+        self.__gccSettings = ToolchainSettings('gcc', 1, 'C', self, None)
+        self.__gppSettings = ToolchainSettings('g++', 2, 'Cxx', self, None)
 
     def getCMakeToolSettings(self):
         return self.__cmakeSettings
 
-    def getToolchainSettings(self):
-        return self.__toolchainSettings
+    def getGccSettings(self):
+        return self.__gccSettings
+    
+    def getGppSettings(self):
+        return self.__gppSettings
     
     def getTargetSysroot(self):
         return os.path.join(self.sdkPath, self.targetSysroot)
@@ -112,7 +119,7 @@ class Params:
         return self.__profileId
 
     def getProfileName(self):
-        return self.name + self.__profileId
+        return self.name + '-' + self.__profileId
 
     def getTargetTriple(self):
         targetTriple = self.getArchPrefix() + "-" + self.getDistroName() + "-" + self.getSystemName()
@@ -140,7 +147,17 @@ def backupFile(filePath):
             isCopyCreated = True
             
         i = i + 1
-        
+
+def getValueElement(elements, key):
+    valuePath = 'value/[@key="' + key + '"]'
+    
+    valueElement = elements.findall(valuePath)
+    if not len(valueElement) == 1:
+        print("Unexpected XML structure")
+        return None
+    
+    return valueElement[0]
+
 def getVariableVal(elements, major, minor):
     dataPath = 'data/[variable="' + str(major)
     
@@ -205,15 +222,48 @@ def addCmaketool(path, cmakeToolSettings):
     allElements.getroot().append(cmakeToolElement)
     allElements.write(path, encoding='utf-8', xml_declaration=True)
 
-def addToolchains(path, toolchainSettings):
-    print("Adding a new GCC toolchains to " + path)
+def findToolchain(path, toolchainSettings):
+
+    allElements = ElementTree.parse(path)
+    
+    countValueElement = getVariableVal(allElements, 'ToolChain', 'Count')
+    count = int(countValueElement.text)
+    
+    for i in range(0, count):
+        valuemapElement = getVariableVal(allElements, 'ToolChain', str(i))
+        pathElement = getValueElement(valuemapElement, 'ProjectExplorer.GccToolChain.Path')
+        
+#         targetTripletElement = getValueElement(valuemapElement, 'ProjectExplorer.GccToolChain.OriginalTargetTriple')
+
+        if (not pathElement == None and pathElement.text == toolchainSettings.getPath()):
+            
+            idValue = getValueElement(valuemapElement, 'ProjectExplorer.ToolChain.Id').text
+            
+            # The id has this format: ProjectExplorer.ToolChain.Gcc:{388a6309-c405-488c-8017-1c915b3d49db}
+            beginIdx = idValue.find('{')
+            endIdx =  idValue.find('}')
+            
+            pureId = idValue[beginIdx:endIdx + 1]
+            
+            toolchainSettings = ToolchainSettings(name = toolchainSettings.getName(),
+                                                  qtLangId = toolchainSettings.getQtLangId(),
+                                                  qtLangName = toolchainSettings.getQtLangName(),
+                                                  params = toolchainSettings.getInputParams(),
+                                                  toolId = pureId)
+            
+            return toolchainSettings
+        
+    return None
+
+def addToolchain(path, toolchainSettings):
+    print("Adding a new toolchain to " + path)
     
     allElements = ElementTree.parse(path)
     
     countValueElement = getVariableVal(allElements, 'ToolChain', 'Count')
     count = int(countValueElement.text) 
 
-    countValueElement.text = str(count + 2) # gcc + g++
+    countValueElement.text = str(count + 1) # gcc + g++
 
     toolchainTemplate = (
         '<data>'
@@ -231,31 +281,20 @@ def addToolchains(path, toolchainSettings):
         '</valuemap>'
         '</data>') 
 
-    gccToolchainXml = toolchainTemplate.format(index = count,
+    toolchainXml = toolchainTemplate.format(index = count,
                                                targetTriple = toolchainSettings.getTargetTriple(),
-                                               path = toolchainSettings.getGccPath(),
-                                               name = toolchainSettings.getGccName(),
-                                               id = toolchainSettings.getGccId(),
-                                               langId = 1,
-                                               langName = 'C')
+                                               path = toolchainSettings.getPath(),
+                                               name = toolchainSettings.getUserFriendlyName(),
+                                               id = toolchainSettings.getId(),
+                                               langId = toolchainSettings.getQtLangId(),
+                                               langName = toolchainSettings.getQtLangName())
 
-    gccToolchainElement = ElementTree.fromstring(gccToolchainXml)
-    allElements.getroot().append(gccToolchainElement)
+    toolchainElement = ElementTree.fromstring(toolchainXml)
+    allElements.getroot().append(toolchainElement)
      
-    gppToolchainXml = toolchainTemplate.format(index = count + 1,
-                                               targetTriple = toolchainSettings.getTargetTriple(),
-                                               path = toolchainSettings.getGppPath(),
-                                               name = toolchainSettings.getGppName(),
-                                               id = toolchainSettings.getGppId(),
-                                               langId = 2,
-                                               langName = 'Cxx')
-
-    gppToolchainElement = ElementTree.fromstring(gppToolchainXml)
-    allElements.getroot().append(gppToolchainElement)
-    
     allElements.write(path, encoding='utf-8', xml_declaration=True)    
-        
-def addProfile(path, params, cmakeToolSettings, toolchainSettings): 
+
+def addProfile(path, params, cmakeToolSettings, gccSettings, gppSettings): 
     print("Adding a new Kit to " + path)
     
     allElements = ElementTree.parse(path)
@@ -278,6 +317,10 @@ def addProfile(path, params, cmakeToolSettings, toolchainSettings):
              <value type="QString">CMAKE_C_COMPILER:INTERNAL={gccPath}</value>
              <value type="QString">CMAKE_SYSROOT:INTERNAL={targetSysroot}</value>
              <value type="QString">CMAKE_TOOLCHAIN_FILE:INTERNAL={nativeSysroot}/usr/share/cmake/OEToolchainConfig.cmake</value>
+             <value type="QString">ARAGEN_PATH:INTERNAL={nativeSysroot}/usr/share/ara-gen/aragen.py</value>
+             <value type="QString">JSONGEN_PATH:INTERNAL={nativeSysroot}/usr/share/ara-gen/jsongen.py</value>
+             <value type="QString">LOG_LEVEL:INTERNAL=debug</value>
+             <value type="QString">ROUTING:INTERNAL=vsomeipd</value>
             </valuelist>
             <valuemap type="QVariantMap" key="CMake.GeneratorKitInformation">
              <value type="QString" key="ExtraGenerator">CodeBlocks</value>
@@ -321,10 +364,10 @@ def addProfile(path, params, cmakeToolSettings, toolchainSettings):
            <valuelist type="QVariantList" key="PE.Profile.StickyInfo"/>
           </valuemap>
          </data>""".format(index = count,
-                           gppPath = toolchainSettings.getGppPath(),
-                           gccPath = toolchainSettings.getGccPath(),
-                           gccId = toolchainSettings.getGccId(),
-                           gppId = toolchainSettings.getGppId(),
+                           gppPath = gppSettings.getPath(),
+                           gccPath = gccSettings.getPath(),
+                           gccId = gccSettings.getId(),
+                           gppId = gppSettings.getId(),
                            cmaketoolId = cmakeToolSettings.getId(),
                            targetSysroot = params.getTargetSysroot(),
                            nativeSysroot = params.getNativeSysroot(),
@@ -350,10 +393,25 @@ def addKit(params):
     cmakeToolSettings = params.getCMakeToolSettings();
     addCmaketool(cmaketoolsPath, cmakeToolSettings)
 
-    toolchainSettings = params.getToolchainSettings()
-    addToolchains(toolchainsPath, toolchainSettings)
+    gccToolchainSettings = params.getGccSettings() 
+    existingGccToolchain = findToolchain(toolchainsPath, gccToolchainSettings)
+    if (existingGccToolchain == None):
+        addToolchain(toolchainsPath, gccToolchainSettings)
+    else:
+        gccToolchainSettings = existingGccToolchain
 
-    addProfile(profilesPath, params, cmakeToolSettings, toolchainSettings)
+    gppToolchainSettings = params.getGppSettings() 
+    existingGppToolchain = findToolchain(toolchainsPath, gppToolchainSettings)
+    if (existingGppToolchain == None):
+        addToolchain(toolchainsPath, gppToolchainSettings)
+    else:
+        gppToolchainSettings = existingGppToolchain
+
+    addProfile(path = profilesPath,
+               params = params,
+               cmakeToolSettings = cmakeToolSettings,
+               gccSettings = gccToolchainSettings,
+               gppSettings = gppToolchainSettings)
     
 def parseArgv(argv, defaultParams):
     argParser = argparse.ArgumentParser(description=
