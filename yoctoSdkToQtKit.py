@@ -285,7 +285,7 @@ def addProfile(path, params, cmakeToolSettings, toolchainSettings):
              <value type="QString" key="Platform"></value>
              <value type="QString" key="Toolset"></value>
             </valuemap>
-            <value type="QString" key="CMakeProjectManager.CMakeKitInformation">cmaketoolId</value>
+            <value type="QString" key="CMakeProjectManager.CMakeKitInformation">{cmaketoolId}</value>
             <value type="QString" key="Debugger.Information">{{ee8407cc-6668-456e-b67e-435f3beb1413}}</value>
             <value type="QString" key="PE.Profile.Device">Desktop Device</value>
             <value type="QString" key="PE.Profile.DeviceType">Desktop</value>
