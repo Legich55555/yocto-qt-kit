@@ -100,13 +100,13 @@ class Params:
         return os.path.join(self.sdkPath, self.nativeSysroot)
 
     def getArchPrefix(self):
-        return "x86_64"
+        return self.archPrefix
 
     def getSystemName(self):
-        return "linux"
+        return self.systemName
 
     def getDistroName(self):
-        return "poky"
+        return self.distroName
 
     def getProfileId(self):
         return self.__profileId
@@ -292,7 +292,7 @@ def addProfile(path, params, cmakeToolSettings, toolchainSettings):
             <valuelist type="QVariantList" key="PE.Profile.Environment">
              <value type="QString">OECORE_NATIVE_SYSROOT={nativeSysroot}</value>
              <value type="QString">OECORE_TARGET_SYSROOT={targetSysroot}</value>
-             <value type="QString">PATH={nativeSysroot}/usr/bin:{nativeSysroot}/bin:{nativeSysroot}/usr/bin/x86_64-poky-linux</value>
+             <value type="QString">PATH={nativeSysroot}/usr/bin:{nativeSysroot}/bin:{nativeSysroot}/usr/bin/x86_64-{distro}-linux:/usr/bin:/bin</value>
              <value type="QString">SDKTARGETSYSROOT={targetSysroot}</value>
              <value type="QString">PKG_CONFIG_PATH={targetSysroot}/usr/lib/pkgconfig/</value>
             </valuelist>
@@ -328,6 +328,7 @@ def addProfile(path, params, cmakeToolSettings, toolchainSettings):
                            cmaketoolId = cmakeToolSettings.getId(),
                            targetSysroot = params.getTargetSysroot(),
                            nativeSysroot = params.getNativeSysroot(),
+                           distro = params.getDistroName(),
                            profileId = params.getProfileId(),
                            profileName = params.getProfileName())
   
@@ -369,9 +370,11 @@ def parseArgv(argv, defaultParams):
     argParser.add_argument('-d', '--sdkPath', required=False, default=defaultParams.sdkPath, 
                            help='set the directory where the Yocto SDK is installed')
     
-    argParser.add_argument('-i', '--interactive', required=False, action='store_true', 
-                           default=defaultParams.isInteractiveMode, 
+    argParser.add_argument('-i', '--interactive', required=False, action='store_true', default=defaultParams.isInteractiveMode, 
                            help='run in interactive mode (not implemented)')
+    
+    argParser.add_argument('-o', '--distro', required=False, default=defaultParams.getDistroName(), 
+                           help='set the distro name')
     
     args = argParser.parse_args()
 
@@ -380,6 +383,9 @@ def parseArgv(argv, defaultParams):
     
     if args.sdkPath:
         defaultParams.sdkPath = args.sdkPath
+        
+    if args.distro:
+        defaultParams.distroName = args.distro
         
     defaultParams.isInteractiveMode = args.interactive
         
@@ -393,14 +399,14 @@ def queryParams(defaultParams):
 def getDefaultParams():
 
     defaultParams = Params()
-    defaultParams.name = "Yocto SDK"
+    defaultParams.name = "Yocto Poky SDK"
     defaultParams.isInteractiveMode = False
     defaultParams.sdkPath = "/opt/poky/2.4.4/"
     defaultParams.archPrefix = "x86_64"
     defaultParams.systemName = "linux"
     defaultParams.distroName = "poky"
-    defaultParams.targetSysroot = "sysroots/core2-64-poky-linux/"
-    defaultParams.nativeSysroot = "sysroots/x86_64-pokysdk-linux/"
+    defaultParams.targetSysroot = "sysroots/core2-64-{distro}-linux/".format(distro = defaultParams.distroName)
+    defaultParams.nativeSysroot = "sysroots/{arch}-{distro}sdk-linux/".format(arch = defaultParams.archPrefix, distro = defaultParams.distroName)
     defaultParams.qtCreatorConfigDir = os.path.expandvars("$HOME/.config/QtProject/qtcreator/")
     
     return defaultParams
@@ -408,7 +414,6 @@ def getDefaultParams():
 def main():
     
     defaultParams = getDefaultParams()
-    defaultParams.sdkPath = "/media/oleg/Data/ara-sdk/"
     
     params = parseArgv(sys.argv, defaultParams)
     if (params.isInteractiveMode):
