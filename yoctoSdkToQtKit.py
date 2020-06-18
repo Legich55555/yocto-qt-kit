@@ -94,10 +94,10 @@ class Params:
         return self.__toolchainSettings
     
     def getTargetSysroot(self):
-        return os.path.join(self.sdkPath, self.targetSysroot)
+        return os.path.join(self.sdkPath, "sysroots/core2-64-{distro}-linux/".format(distro = self.distroName))
 
     def getNativeSysroot(self):
-        return os.path.join(self.sdkPath, self.nativeSysroot)
+        return os.path.join(self.sdkPath, "sysroots/{arch}-{distro}sdk-linux/".format(arch = self.archPrefix, distro = self.distroName))
 
     def getArchPrefix(self):
         return self.archPrefix
@@ -405,8 +405,6 @@ def getDefaultParams():
     defaultParams.archPrefix = "x86_64"
     defaultParams.systemName = "linux"
     defaultParams.distroName = "poky"
-    defaultParams.targetSysroot = "sysroots/core2-64-{distro}-linux/".format(distro = defaultParams.distroName)
-    defaultParams.nativeSysroot = "sysroots/{arch}-{distro}sdk-linux/".format(arch = defaultParams.archPrefix, distro = defaultParams.distroName)
     defaultParams.qtCreatorConfigDir = os.path.expandvars("$HOME/.config/QtProject/qtcreator/")
     
     return defaultParams
